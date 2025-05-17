@@ -1604,4 +1604,610 @@ php artisan migrate:fresh --seed
 ---
 
 
+تمام، بناءً على مخطط قاعدة البيانات المعدل V2.1 ومتطلباتك لإنشاء Backend API ولوحة تحكم إدارية بسيطة باستخدام Laravel، إليك قائمة شاملة بتعليمات Artisan لإنشاء الملفات اللازمة، متبوعة بتصميم لملفات `web.php` و `api.php`.
+
+سنستخدم Laravel Sanctum لمصادقة API، وهو مناسب لتطبيقات الجوال.
+
+**ملاحظات هامة قبل البدء:**
+
+*   هذه القائمة تغطي *إنشاء* الملفات فقط. ستحتاج إلى كتابة المنطق الفعلي داخل هذه الملفات (Migration Schema، Model relationships/fillables، Controller logic، Request validation، Resource formatting).
+*   سنستخدم أسماء قياسية للملفات والمتحكمات بناءً على مواردك (Users, Products, TouristSites, etc.).
+*   لتبسيط لوحة التحكم الإدارية، سنفترض نمط "الموارد" (Resourceful Controllers) لمعظم الجداول التي تحتاج إدارة CRUD (Create, Read, Update, Delete).
+*   لـ API، سنستخدم المتحكمات التي ترجع JSON. بعضها سيكون "Resourceful API Controllers".
+*   افتراضياً، جدول `users` ونموذجه موجودان بالفعل. عدلناهم في الخطوة السابقة. تعليمات `make:model` هنا ستكون للجداول *الأخرى* غير `users`.
+*   **بالنسبة للحقول Polymorphic** (`Favorites`, `Ratings`, `Comments`): ستتعامل مع هذه الجداول في API Controllers الخاصة بها، حيث ستحدد `target_type` و `target_id` بناءً على الطلب الوارد (مثلاً، إضافة تقييم لمنتج، أو تعليق على مقال). النماذج تم تعريفها في الخطوة السابقة بعلاقات `morphTo`/`morphMany`.
+
+---
+
+**الجزء الأول: تعليمات Artisan لإنشاء الملفات**
+
+افتح سطر الأوامر في جذر مشروع Laravel (تأكد من أنك داخل مجلد `smart-tourism-app` الذي أنشأته سابقاً). نفذ التعليمات التالية بالترتيب:
+
+**1. إنشاء Migration وملفات Models (لجداول قاعدة البيانات الجديدة)**
+
+لقد قمت بإنشاء هذه في الخطوة السابقة مع `-m`، ولكن أعيد تكرار التعليمات هنا للتأكيد:
+
+```bash
+php artisan make:model UserProfile -m
+php artisan make:model UserPhoneNumber -m
+php artisan make:model ProductCategory -m
+php artisan make:model Product -m
+php artisan make:model ShoppingCartItem -m
+php artisan make:model ProductOrder -m
+php artisan make:model ProductOrderItem -m
+php artisan make:model SiteCategory -m
+php artisan make:model TouristSite -m
+php artisan make:model TouristActivity -m
+php artisan make:model Hotel -m
+php artisan make:model HotelRoomType -m
+php artisan make:model HotelRoom -m
+php artisan make:model HotelBooking -m
+php artisan make:model SiteExperience -m
+php artisan make:model Article -m
+php artisan make:model Favorite -m
+php artisan make:model Rating -m
+php artisan make:model Comment -m
+```
+*(الملف `create_users_table.php` موجود بالفعل، قم بتعديله كما في الخطوة السابقة).*
+
+**2. إنشاء Controllers (واجهة Web الإدارية)**
+
+هذه المتحكمات ستستخدم لعرض صفحات لوحة التحكم الإدارية وإدارة البيانات عبر واجهة Web تقليدية. سنستخدم `--resource` لإنشاء جميع الدوال القياسية (index, create, store, show, edit, update, destroy).
+
+```bash
+# Users management (separate from public auth)
+php artisan make:controller Admin/UserController --resource
+
+# Product Management
+php artisan make:controller Admin/ProductCategoryController --resource
+php artisan make:controller Admin/ProductController --resource
+php artisan make:controller Admin/ProductOrderController --resource
+
+# Tourism Content Management
+php artisan make:controller Admin/SiteCategoryController --resource
+php artisan make:controller Admin/TouristSiteController --resource
+php artisan make:controller Admin/TouristActivityController --resource
+php artisan make:controller Admin/HotelController --resource
+php artisan make:controller Admin/HotelRoomTypeController --resource
+php artisan make:controller Admin/HotelRoomController --resource
+php artisan make:controller Admin/HotelBookingController --resource
+php artisan make:controller Admin/SiteExperienceController --resource
+php artisan make:controller Admin/ArticleController --resource
+
+# Consider controllers for reviewing / moderating polymorphic content if needed
+# php artisan make:controller Admin/ReviewController --resource
+# php artisan make:controller Admin/CommentModerationController --resource
+# php artisan make:controller Admin/FavoriteReviewController --resource
+```
+*ملاحظة:* تم وضع هذه المتحكمات في مجلد `Admin` داخل `app/Http/Controllers` لتنظيم أفضل.
+
+**3. إنشاء Controllers (واجهة API لتطبيق الجوال)**
+
+هذه المتحكمات ستخدم تطبيق الجوال. سنستخدم `--api` لإنشاء الدوال المناسبة لـ API (index, store, show, update, destroy، بدون create/edit views). بعض الوظائف (مثل تسجيل الدخول/الخروج، إدارة السلة، المفضلة، التقييمات، التعليقات) تتطلب متحكمات مخصصة غير موردية تماماً.
+
+```bash
+# API Authentication (Login, Register, Logout using Sanctum)
+php artisan make:controller Api/AuthController
+
+# User Profile API
+php artisan make:controller Api/UserProfileController
+
+# Product related API
+php artisan make:controller Api/ProductController --api # Browse/View products
+php artisan make:controller Api/ProductCategoryController --api # List categories
+php artisan make:controller Api/ShoppingCartController # Manage user's cart
+php artisan make:controller Api/ProductOrderController # Place/View user's orders
+
+# Tourism Content API
+php artisan make:controller Api/TouristSiteController --api # Browse/View sites
+php artisan make:controller Api/SiteCategoryController --api # List categories
+php artisan make:controller Api/TouristActivityController --api # Browse/View activities
+php artisan make:controller Api/HotelController --api # Browse/View hotels
+# HotelRoomController might not be needed as rooms are typically viewed via hotel details
+# php artisan make:controller Api/HotelRoomController --api
+php artisan make:controller Api/HotelBookingController # Manage user's hotel bookings
+php artisan make:controller Api/SiteExperienceController --api # User's site experiences/reviews
+php artisan make:controller Api/ArticleController --api # Browse/View articles (Blog)
+
+# Polymorphic related API (User actions like favorite, rate, comment)
+php artisan make:controller Api/FavoriteController # Add/Remove/View user's favorites
+php artisan make:controller Api/RatingController # Add/Update/Delete/View ratings
+php artisan make:controller Api/CommentController # Add/Update/Delete/View comments (can be nested/reply)
+```
+*ملاحظة:* تم وضع هذه المتحكمات في مجلد `Api` داخل `app/Http/Controllers`.
+
+**4. إنشاء Request Classes (للتحقق من صحة المدخلات)**
+
+ستحتاج لإنشاء Request class لكل عملية تستقبل بيانات من المستخدم (نماذج الإدخال في الويب الإدارية، أو حمولات JSON في API).
+
+```bash
+# Auth Requests
+php artisan make:request Auth/LoginRequest
+php artisan make:request Auth/RegisterRequest
+
+# User Profile Requests
+php artisan make:request UserProfile/UpdateProfileRequest
+
+# Product Requests
+php artisan make:request Product/StoreProductRequest
+php artisan make:request Product/UpdateProductRequest
+php artisan make:request ProductCategory/StoreProductCategoryRequest
+php artisan make:request ProductCategory/UpdateProductCategoryRequest
+php artisan make:request ShoppingCart/AddToCartRequest
+php artisan make:request ShoppingCart/UpdateCartItemRequest
+php artisan make:request ProductOrder/PlaceOrderRequest
+
+# Tourism Content Requests
+php artisan make:request TouristSite/StoreTouristSiteRequest
+php artisan make:request TouristSite/UpdateTouristSiteRequest
+php artisan make:request SiteCategory/StoreSiteCategoryRequest
+php artisan make:request SiteCategory/UpdateSiteCategoryRequest
+php artisan make:request TouristActivity/StoreTouristActivityRequest
+php artisan make:request TouristActivity/UpdateTouristActivityRequest
+php artisan make:request Hotel/StoreHotelRequest
+php artisan make:request Hotel/UpdateHotelRequest
+php artisan make:request HotelRoomType/StoreHotelRoomTypeRequest
+php artisan make:request HotelRoomType/UpdateHotelRoomTypeRequest
+php artisan make:request HotelRoom/StoreHotelRoomRequest
+php artisan make:request HotelRoom/UpdateHotelRoomRequest
+php artisan make:request HotelBooking/StoreHotelBookingRequest
+# php artisan make:request HotelBooking/UpdateHotelBookingRequest # Maybe update is not allowed after booking
+
+# Content Requests
+php artisan make:request SiteExperience/StoreSiteExperienceRequest
+php artisan make:request SiteExperience/UpdateSiteExperienceRequest
+php artisan make:request Article/StoreArticleRequest
+php artisan make:request Article/UpdateArticleRequest
+
+# Polymorphic Action Requests
+php artisan make:request Favorite/ToggleFavoriteRequest # For adding/removing a favorite
+php artisan make:request Rating/StoreRatingRequest
+php artisan make:request Rating/UpdateRatingRequest
+php artisan make:request Comment/StoreCommentRequest
+php artisan make:request Comment/UpdateCommentRequest
+```
+*ملاحظة:* هذه قائمة شاملة للطلبات المحتملة. يمكنك إنشاء الطلبات حسب الحاجة أثناء تطوير كل ميزة. يتم وضع هذه الملفات في مجلد `app/Http/Requests`. أنشئ المجلدات الفرعية (Auth, UserProfile, etc.) لتنظيم أفضل.
+
+**5. إنشاء Resource Classes (لتنسيق مخرجات API)**
+
+ستحتاج Resource class لكل نموذج بيانات تقوم بإرجاعه في استجابات API.
+
+```bash
+php artisan make:resource UserResource
+php artisan make:resource UserProfileResource
+php artisan make:resource UserPhoneNumberResource
+php artisan make:resource ProductCategoryResource
+php artisan make:resource ProductResource
+php artisan make:resource ShoppingCartItemResource
+php artisan make:resource ProductOrderResource
+php artisan make:resource ProductOrderItemResource # May or may not need a dedicated resource, can be nested in OrderResource
+php artisan make:resource SiteCategoryResource
+php artisan make:resource TouristSiteResource
+php artisan make:resource TouristActivityResource
+php artisan make:resource HotelResource
+php artisan make:resource HotelRoomTypeResource
+php artisan make:resource HotelRoomResource
+php artisan make:resource HotelBookingResource
+php artisan make:resource SiteExperienceResource
+php artisan make:resource ArticleResource
+php artisan make:resource FavoriteResource
+php artisan make:resource RatingResource
+php artisan make:resource CommentResource
+```
+*ملاحظة:* يتم وضع هذه الملفات في مجلد `app/Http/Resources`.
+
+**6. إنشاء View Files (لصفحات الويب الإدارية)**
+
+هذه الملفات ستكون قوالب HTML التي سيتم عرضها بواسطة متحكمات الويب الإدارية.
+
+```bash
+# Admin Layout (e.g., basic admin layout)
+php artisan make:view layouts/admin
+
+# Dashboard
+php artisan make:view admin/dashboard
+
+# User Management Views
+php artisan make:view admin/users/index
+php artisan make:view admin/users/create
+php artisan make:view admin/users/edit
+php artisan make:view admin/users/show # Optional
+
+# Product Management Views
+php artisan make:view admin/products/index
+php artisan make:view admin/products/create
+php artisan make:view admin/products/edit
+php artisan make:view admin/products/show # Optional
+php artisan make:view admin/product_categories/index
+php artisan make:view admin/product_categories/create
+php artisan make:view admin/product_categories/edit
+
+# Order Management Views
+php artisan make:view admin/product_orders/index
+php artisan make:view admin/product_orders/show
+
+# Tourism Content Management Views
+php artisan make:view admin/tourist_sites/index
+php artisan make:view admin/tourist_sites/create
+php artisan make:view admin/tourist_sites/edit
+php artisan make:view admin/tourist_sites/show
+php artisan make:view admin/site_categories/index
+php artisan make:view admin/site_categories/create
+php artisan make:view admin/site_categories/edit
+php artisan make:view admin/tourist_activities/index
+php artisan make:view admin/tourist_activities/create
+php artisan make:view admin/tourist_activities/edit
+php artisan make:view admin/hotels/index
+php artisan make:view admin/hotels/create
+php artisan make:view admin/hotels/edit
+php artisan make:view admin/hotels/show
+php artisan make:view admin/hotel_room_types/index
+php artisan make:view admin/hotel_room_types/create
+php artisan make:view admin/hotel_room_types/edit
+php artisan make:view admin/hotel_rooms/index
+php artisan make:view admin/hotel_rooms/create
+php artisan make:view admin/hotel_rooms/edit
+php artisan make:view admin/hotel_bookings/index
+php artisan make:view admin/hotel_bookings/show
+
+# Content Management Views
+php artisan make:view admin/site_experiences/index # For moderation
+php artisan make:view admin/site_experiences/show # For moderation/details
+php artisan make:view admin/articles/index
+php artisan make:view admin/articles/create
+php artisan make:view admin/articles/edit
+php artisan make:view admin/articles/show
+
+# Views for managing polymorphic content (ratings, comments) - potentially integrated into resource views (e.g., view comments on a product page)
+# Or separate views for moderation:
+# php artisan make:view admin/ratings/index
+# php artisan make:view admin/comments/index
+```
+*ملاحظة:* يتم وضع هذه الملفات في مجلد `resources/views`. أنشئ المجلدات الفرعية (layouts, admin, admin/users, etc.) لتنظيم أفضل.
+
+**7. إنشاء Seeders (لبيانات تجريبية)**
+
+كما ذكرنا في الخطوة السابقة، ستحتاج لإنشاء Seeders. أعد تكرار التعليمات هنا للتأكيد:
+
+```bash
+# General Seeders (already created some of these)
+php artisan make:seeder UserSeeder
+php artisan make:seeder ProductCategorySeeder
+php artisan make:seeder SiteCategorySeeder
+php artisan make:seeder TouristSiteSeeder
+php artisan make:seeder ProductSeeder
+php artisan make:seeder HotelSeeder
+php artisan make:seeder HotelRoomTypeSeeder
+php artisan make:seeder HotelRoomSeeder
+# Seeders for data that depends on the above (e.g., relationships, user-generated content)
+# php artisan make:seeder TouristActivitySeeder
+# php artisan make:seeder HotelBookingSeeder
+# php artisan make:seeder SiteExperienceSeeder
+# php artisan make:seeder ArticleSeeder
+# Seeders for polymorphic data (more complex, might need custom logic)
+# php artisan make:seeder FavoritesRatingsCommentsSeeder
+```
+
+---
+
+**الجزء الثاني: تصميم ملفات `web.php` و `api.php`**
+
+هذه الملفات تحدد نقاط النهاية (Endpoints) لتطبيقك وكيفية توجيه الطلبات الواردة إلى المتحكمات المناسبة.
+
+**1. ملف `routes/web.php` (لواجهة الويب الإدارية)**
+
+```php
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin; // Import the Admin controllers namespace
+
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register web routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "web" middleware group. Make something great!
+|
+*/
+
+// Public facing simple routes (optional)
+// Route::get('/', function () { return view('welcome'); });
+// Route::get('/about', function () { return view('about'); });
+
+// Admin Panel Routes
+// Group admin routes under a prefix and apply middleware (e.g., auth, admin role)
+Route::prefix('admin')->middleware(['auth', 'can:access-admin-panel'])->group(function () {
+
+    // Admin Dashboard
+    Route::get('/', [Admin\DashboardController::class, 'index'])->name('admin.dashboard'); // You'll need to create Admin\DashboardController
+
+    // Resource Management Routes (using Route::resource)
+    Route::resource('users', Admin\UserController::class);
+    Route::resource('product-categories', Admin\ProductCategoryController::class);
+    Route::resource('products', Admin\ProductController::class);
+    Route::resource('product-orders', Admin\ProductOrderController::class)->only(['index', 'show']); // Maybe limited actions via admin panel
+
+    Route::resource('site-categories', Admin\SiteCategoryController::class);
+    Route::resource('tourist-sites', Admin\TouristSiteController::class);
+    Route::resource('tourist-activities', Admin\TouristActivityController::class);
+
+    Route::resource('hotels', Admin\HotelController::class);
+    Route::resource('hotel-room-types', Admin\HotelRoomTypeController::class);
+    Route::resource('hotel-rooms', Admin\HotelRoomController::class);
+    Route::resource('hotel-bookings', Admin\HotelBookingController::class)->only(['index', 'show']); // Maybe limited actions
+
+    Route::resource('site-experiences', Admin\SiteExperienceController::class); // For moderation
+    Route::resource('articles', Admin\ArticleController::class);
+
+    // Routes for managing polymorphic content (optional, could be part of resource pages)
+    // Route::get('ratings', [Admin\RatingController::class, 'index'])->name('admin.ratings.index');
+    // Route::get('comments', [Admin\CommentController::class, 'index'])->name('admin.comments.index');
+
+    // Add more admin-specific routes here as needed (e.g., reports, settings, payment gateway config)
+
+});
+
+// Admin Authentication Routes (if using Laravel's built-in auth for admin panel)
+// You might use Breeze/Jetstream or custom auth for admin login
+// Example (if using custom auth):
+// Route::get('admin/login', [Admin\Auth\LoginController::class, 'showLoginForm'])->name('admin.login');
+// Route::post('admin/login', [Admin\Auth\LoginController::class, 'login']);
+// Route::post('admin/logout', [Admin\Auth\LoginController::class, 'logout'])->name('admin.logout');
+
+// Fallback route for SPA or generic welcome
+Route::get('/{any}', function () {
+    return view('welcome'); // Or your admin panel's base view
+})->where('any', '.*'); // Catch all route for SPA (if admin is an SPA)
+```
+*ملاحظات على `web.php`:*
+*   `middleware(['auth', 'can:access-admin-panel'])`: يفترض أن لديك نظام مصادقة (مثل Laravel Breeze) وقدرة (Ability) أو دور (Role) يسمى `access-admin-panel` معرف في ملف `app/Providers/AuthServiceProvider.php` لتحديد من يمكنه الوصول إلى لوحة التحكم الإدارية.
+*   `Admin\DashboardController`: تحتاج لإنشاء هذا المتحكم يدوياً (لم ننشئه باستخدام `--resource` أعلاه لأنه ليس مورد CRUD قياسي). `php artisan make:controller Admin/DashboardController`.
+*   `Route::resource()->only([...])`: استخدم `only` أو `except` لتحديد الدوال المسموح بها للمورد إذا لم تكن جميع عمليات CRUD متاحة مباشرة.
+*   إذا كانت لوحة التحكم الإدارية تطبيق SPA (Single Page Application)، فقد تحتاج إلى تعديل `web.php` ليخدم ملف HTML واحد يحتوي على تطبيق SPA، وتستخدم الـ API للتعامل مع البيانات. المسار الأخير `Route::get('/{any}', ...)` مناسب لهذا الغرض.
+
+**2. ملف `routes/api.php` (لواجهة API لتطبيق الجوال)**
+
+```php
+<?php
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api; // Import the API controllers namespace
+
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register API routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "api" middleware group. Make something great!
+|
+*/
+
+// Authentication Routes (using Sanctum)
+Route::post('/register', [Api\AuthController::class, 'register']);
+Route::post('/login', [Api\AuthController::class, 'login']);
+
+// Protected routes (require Sanctum token)
+Route::middleware('auth:sanctum')->group(function () {
+
+    // User Authentication (Logout and get authenticated user)
+    Route::post('/logout', [Api\AuthController::class, 'logout']);
+    Route::get('/user', function (Request $request) {
+        return $request->user(); // Returns authenticated user details
+    });
+
+    // User Profile
+    Route::get('/profile', [Api\UserProfileController::class, 'show']);
+    Route::put('/profile', [Api\UserProfileController::class, 'update']); // Use PUT for full update, PATCH for partial
+
+    // Shopping Cart
+    Route::get('/cart', [Api\ShoppingCartController::class, 'index']);
+    Route::post('/cart/add', [Api\ShoppingCartController::class, 'store']); // Add item to cart
+    Route::put('/cart/{item}', [Api\ShoppingCartController::class, 'update']); // Update item quantity
+    Route::delete('/cart/{item}', [Api\ShoppingCartController::class, 'destroy']); // Remove item
+
+    // Product Orders
+    Route::get('/my-orders', [Api\ProductOrderController::class, 'index']); // View user's orders
+    Route::get('/my-orders/{order}', [Api\ProductOrderController::class, 'show']); // View single order
+    Route::post('/orders', [Api\ProductOrderController::class, 'store']); // Place a new order (from cart)
+
+    // Hotel Bookings
+    Route::get('/my-bookings', [Api\HotelBookingController::class, 'index']); // View user's bookings
+    Route::get('/my-bookings/{booking}', [Api\HotelBookingController::class, 'show']); // View single booking
+    Route::post('/bookings', [Api\HotelBookingController::class, 'store']); // Place a new booking
+    // Route::delete('/bookings/{booking}', [Api\HotelBookingController::class, 'destroy']); // Option to cancel booking?
+
+    // Site Experiences (User can manage their own)
+    Route::apiResource('my-experiences', Api\SiteExperienceController::class); // CRUD for user's experiences
+
+    // Polymorphic Actions (Favorites, Ratings, Comments)
+    Route::post('/favorites/toggle', [Api\FavoriteController::class, 'toggle']); // Add or remove a favorite
+    Route::get('/my-favorites', [Api\FavoriteController::class, 'index']); // View user's favorites (Polymorphic)
+
+    Route::apiResource('ratings', Api\RatingController::class)->only(['store', 'update', 'destroy']); // Users add/update/delete their own ratings
+    // Note: Getting ratings for a specific target (site, product) would likely be a method on the target's controller
+    // e.g., GET /api/tourist-sites/{site}/ratings -> TouristSiteController@ratings (or similar)
+
+    Route::apiResource('comments', Api\CommentController::class)->only(['store', 'update', 'destroy']); // Users add/update/delete their own comments
+    // Note: Getting comments for a specific target (article, product) would likely be a method on the target's controller
+    // e.g., GET /api/articles/{article}/comments -> ArticleController@comments (or similar)
+     Route::get('/comments/{comment}/replies', [Api\CommentController::class, 'replies']); // Get replies for a comment
+
+
+     // Example of fetching ratings/comments for a target via its resource controller
+     // (You'd add methods like 'ratings', 'comments', 'favorites' to those controllers)
+     // Route::get('/tourist-sites/{site}/ratings', [Api\TouristSiteController::class, 'ratings']);
+     // Route::get('/products/{product}/comments', [Api\ProductController::class, 'comments']);
+
+    // Add more protected API routes here as needed
+});
+
+
+// Publicly Accessible API Routes (do NOT require Sanctum token)
+// Users can browse/view resources without logging in
+Route::get('/products', [Api\ProductController::class, 'index']);
+Route::get('/products/{product}', [Api\ProductController::class, 'show']);
+Route::get('/product-categories', [Api\ProductCategoryController::class, 'index']); // List categories
+
+Route::get('/tourist-sites', [Api\TouristSiteController::class, 'index']);
+Route::get('/tourist-sites/{touristSite}', [Api\TouristSiteController::class, 'show']);
+Route::get('/site-categories', [Api\SiteCategoryController::class, 'index']); // List categories
+
+Route::get('/tourist-activities', [Api\TouristActivityController::class, 'index']);
+Route::get('/tourist-activities/{touristActivity}', [Api\TouristActivityController::class, 'show']);
+
+Route::get('/hotels', [Api\HotelController::class, 'index']);
+Route::get('/hotels/{hotel}', [Api\HotelController::class, 'show']);
+
+Route::get('/articles', [Api\ArticleController::class, 'index']);
+Route::get('/articles/{article}', [Api\ArticleController::class, 'show']);
+
+// Public endpoints to get ratings/comments for a target (optional, can be done via target controller)
+Route::get('/{targetType}/{targetId}/ratings', [Api\RatingController::class, 'indexForTarget']); // You'd need indexForTarget method
+Route::get('/{targetType}/{targetId}/comments', [Api\CommentController::class, 'indexForTarget']); // You'd need indexForTarget method
+
+// ... add other publicly accessible routes
+```
+*ملاحظات على `api.php`:*
+*   `Route::middleware('auth:sanctum')->group(...)`: جميع المسارات داخل هذا التجميع تتطلب توكن Sanctum صالح في رأس الطلب (`Authorization: Bearer YOUR_TOKEN`).
+*   `Route::apiResource()`: يوفر مجموعة من المسارات القياسية لعمليات CRUD (index, store, show, update, destroy).
+*   المسارات العامة (Public) توضع خارج التجميع الذي يستخدم `auth:sanctum`.
+*   بالنسبة للجداول المتعددة الأشكال (Favorites, Ratings, Comments)، تحتاج إلى تصميم نقاط نهاية API التي تستقبل `target_type` و `target_id` في الطلبات (POST/PUT/DELETE) أو كجزء من عنوان URL (GET). المسارات المقترحة هي أمثلة على كيفية القيام بذلك.
+
+---
+
+**الخطوات التالية:**
+
+1.  **نفذ جميع أوامر `php artisan make:...`** المذكورة في الجزء الأول.
+2.  **املأ محتوى ملفات Migration:** افتح ملفات `database/migrations/*_create_*.php` وقم بكتابة الـ schema لكل جدول بناءً على مخطط قاعدة البيانات V2.1.
+3.  **نفذ `php artisan migrate:fresh --seed`** لتشغيل جميع Migrations وملء القاعدة ببيانات تجريبية (بعد كتابة محتوى Seeders).
+4.  **املأ محتوى ملفات Models:** افتح ملفات `app/Models/*.php` وقم بتعريف `$fillable`/`$guarded` والعلاقات (`belongsTo`, `hasMany`, `morphTo`, `morphMany`).
+5.  **املأ محتوى ملفات Request:** افتح ملفات `app/Http/Requests/*/*.php` وقم بكتابة قواعد التحقق من صحة المدخلات في دالة `rules()`.
+6.  **املأ محتوى ملفات Resource:** افتح ملفات `app/Http/Resources/*.php` وحدد كيف يجب تنسيق بيانات النموذج عند إرجاعها كـ JSON.
+7.  **املأ محتوى ملفات Controller:** افتح ملفات `app/Http/Controllers/**/*.php` واكتب منطق التعامل مع كل طلب (جلب بيانات، حفظ، تحديث، حذف، منطق الحجز، إلخ).
+8.  **املأ محتوى ملفات View:** افتح ملفات `resources/views/**/*.blade.php` وقم بتصميم واجهة المستخدم للوحة التحكم الإدارية باستخدام Blade templating.
+9.  **اختبر نقاط النهاية:** استخدم أدوات مثل Postman لاختبار API endpoints، وتصفح لوحة التحكم الإدارية في المتصفح.
+
+هذه الخطوات توفر الهيكل الكامل لمشروعك. الآن يبدأ العمل على بناء المنطق داخل كل ملف تم إنشاؤه. بالتوفيق في مشروعك!
+
+
+---
+
+
+نعم، ملاحظتك دقيقة جداً وصحيحة. في الإصدارات الحديثة من Laravel (خاصة من Laravel 9 فصاعداً عند إنشاء مشروع بدون تحديد حزمة Starter Kit للمصادقة)، لا يتم إنشاء ملف `routes/api.php` بشكل افتراضي. السبب هو أن بنية المشروع الأساسية أصبحت تركز أكثر على تطبيقات الويب التقليدية ما لم تطلب صراحة مكونات API.
+
+**ماذا يعني هذا؟**
+
+1.  **يجب عليك إنشاء ملف `routes/api.php` يدوياً.**
+2.  **الأهم:** يجب عليك التأكد من أن Laravel يعرف أنه يجب تحميل هذا الملف وتطبيق الـ Middleware المناسب عليه. يتم ذلك بواسطة ملف `app/Providers/RouteServiceProvider.php`.
+
+**الخطوات الإضافية المطلوبة:**
+
+1.  **إنشاء ملف `routes/api.php`:**
+    في مجلد `routes` داخل مشروعك، أنشئ ملفاً جديداً باسم `api.php`.
+
+    ```bash
+    # تأكد من أنك في جذر المشروع smart-tourism-app
+    touch routes/api.php
+    ```
+    أو ببساطة قم بإنشائه باستخدام محرر النصوص الخاص بك في المسار `your-project-name/routes/api.php`.
+
+2.  **تكوين `RouteServiceProvider`:**
+    هذا هو الجزء الأهم. افتح ملف `app/Providers/RouteServiceProvider.php`. ستجد فيه عادةً دالة `boot()` أو `map()` (اعتماداً على إصدار Laravel الدقيق، ولكن `boot()` هي الطريقة الحديثة). داخل هذه الدالة، يتم تعريف كيفية تحميل ملفات المسارات وتطبيق الـ Middleware عليها.
+
+    ابحث عن الجزء الذي يتعلق بـ API. قد يكون موجوداً ولكن معطلاً، أو قد تحتاج لإضافته. الكود النموذجي في الإصدارات الحديثة داخل دالة `boot()` يبدو كالتالي:
+
+    ```php
+    <?php
+
+    namespace App\Providers;
+
+    use Illuminate\Cache\RateLimiting\Limit;
+    use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\RateLimiter;
+    use Illuminate\Support\Facades\Route;
+
+    class RouteServiceProvider extends ServiceProvider
+    {
+        /**
+         * The path to your application's "home" route.
+         *
+         * Typically, users are redirected here after authentication.
+         *
+         * @var string
+         */
+        public const HOME = '/home'; // يمكنك تغيير هذا حسب الحاجة
+
+        /**
+         * Define your route model bindings, pattern filters, and other route configuration.
+         */
+        public function boot(): void
+        {
+            RateLimiter::for('api', function (Request $request) {
+                return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            });
+
+            $this->routes(function () {
+                // This is where API and Web routes are typically defined/loaded
+
+                // Web routes
+                Route::middleware('web')
+                    ->group(base_path('routes/web.php'));
+
+                // API routes - Make sure this block exists and is not commented out
+                Route::middleware('api') // Apply the 'api' middleware group
+                    ->prefix('api') // Prefix all routes in api.php with /api
+                    ->group(base_path('routes/api.php')); // Load the api.php file
+            });
+        }
+        // ... بقية الكلاس ...
+    }
+    ```
+
+    **التحقق المطلوب:**
+
+    *   تأكد من وجود الكتلة الخاصة بـ `Route::middleware('api')...`.
+    *   تأكد من أنها ليست معطلة (ليست داخل تعليق `/* ... */`).
+    *   تأكد من أنها تشير إلى ملف `routes/api.php`.
+
+    إذا كانت هذه الكتلة غير موجودة، أضفها داخل دالة `boot()` في المكان المناسب (عادةً بعد تحميل مسارات الويب).
+
+3.  **فهم Middleware Group `api`:**
+    ملف `app/Http/Kernel.php` يعرف مجموعات الـ Middleware القياسية. ابحث عن `$middlewareGroups`. ستجد مجموعة `api` معرفة هنا.
+
+    ```php
+    protected $middlewareGroups = [
+        'web' => [
+            // ... web middleware like Session, csrf token, etc.
+        ],
+
+        'api' => [
+            // Laravel's recommended API middleware
+            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class, // Keep for SPA, remove or comment for mobile pure API
+            \Illuminate\Routing\Middleware\ThrottleRequests::class.':api', // Rate limiting
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            // ... other API middleware
+        ],
+    ];
+    ```
+    *ملاحظة:* لمشروع API جوال (عادةً لا يستخدم Session أو Stateful requests بنفس طريقة SPA)، قد تحتاج إلى تعطيل أو إزالة `EnsureFrontendRequestsAreStateful::class` من مجموعة `api` middleware في Kernel.php. هذا يعتمد على كيفية تخطيطك للمصادقة بالضبط (هل ستستخدم Cookies للمصادقة الأولية مع SPA؟ أم فقط Tokens عبر Authorization header للموبايل؟). لموبايل API، غالباً ما يتم إزالته.
+
+**ملخص ما يجب فعله:**
+
+1.  أنشئ ملف `routes/api.php` في مجلد `routes`.
+2.  افتح `app/Providers/RouteServiceProvider.php` وتأكد من وجود الكود الذي يحمل ملف `routes/api.php` ويطبق عليه الـ `api` middleware group. إذا لم يكن موجوداً، قم بإضافته.
+3.  (اختياري ومتقدم) إذا كنت تبني فقط Mobile API ولا تستخدم SPA، قد تفكر في تعطيل `EnsureFrontendRequestsAreStateful::class` في مجموعة الـ `api` middleware في `app/Http/Kernel.php`.
+4.  الآن يمكنك وضع تعريفات الـ API الخاصة بك (مثل `Route::post('/register', ...)`) داخل ملف `routes/api.php` الذي أنشأته. سيتم الوصول إليها ببادئة `/api/`.
+
+بهذه الخطوات، سيتم تحميل ملف `api.php` ومعالجة مسارات الـ API بشكل صحيح بواسطة Laravel.
+
+---
+
+
 
