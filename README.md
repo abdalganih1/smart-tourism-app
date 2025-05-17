@@ -2211,3 +2211,1153 @@ Route::get('/{targetType}/{targetId}/comments', [Api\CommentController::class, '
 
 
 
+تمام، لا مشكلة على الإطلاق. الاعتماد على convention لارفل (استخدام `id` كمفتاح أساسي تلقائي التزايد) هو بالفعل النهج الأكثر شيوعاً وتبسيطاً في معظم الحالات، ويجنب الحاجة لتحديد `$primaryKey` و `$incrementing` و `$keyType` في معظم النماذج.
+
+سنقوم بإعادة بناء جميع ملفات النماذج بناءً على هذا التغيير، مع الأخذ في الاعتبار أن كل جدول الآن يحتوي على عمود مفتاح أساسي واحد فقط اسمه `id` (من نوع `unsignedBigInteger` تلقائي التزايد)، وأن جميع المفاتيح الأجنبية تشير إلى هذا العمود `id` في الجداول الأخرى.
+
+**ملاحظة:** هذا يعني أنك قمت بتعديل جميع ملفات Migration التي أنشأتها سابقاً لتصبح بهذا الشكل:
+
+```php
+Schema::create('table_name', function (Blueprint $table) {
+    $table->id(); // Primary key named 'id'
+    // ... other columns ...
+    $table->foreignId('foreign_table_id')->constrained()->onDelete(...); // Foreign key referring to 'id'
+    // ...
+});
+```
+مع ملاحظة أن `foreignId()` في Laravel هي اختصار لـ `unsignedBigInteger('foreign_table_id')` وإضافة المفتاح الأجنبي الذي يشير تلقائياً إلى عمود `id` في جدول `foreign_table` (الذي يستنتج من اسم العمود).
+
+الآن، لنعيد بناء ملفات Models:
+
+**تحديث نموذج `app/Models/User.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
+
+class User extends Authenticatable
+{
+    use HasApiTokens, HasFactory, Notifiable;
+
+    // Primary key is 'id' by default, no need to specify $primaryKey
+
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
+    protected $fillable = [
+        'username',
+        'email',
+        'password_hash', // Using password_hash as per your schema
+        'user_type',
+        'is_active',
+    ];
+
+    /**
+     * The attributes that should be hidden for serialization.
+     *
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'password_hash',
+        'remember_token',
+    ];
+
+    /**
+     * The attributes that should be cast.
+     *
+     * @var array<string, string>
+     */
+    protected $casts = [
+        // 'email_verified_at' => 'datetime', // Uncomment if using email verification
+        'password_hash' => 'hashed', // Note: Laravel's default Auth expects 'password' column.
+                                    // If keeping 'password_hash', you might need custom logic
+                                    // for login using Hash::check() or a custom Auth provider.
+                                    // For simplicity with built-in auth features (like password reset),
+                                    // renaming the column to 'password' in the migration is often easier.
+                                    // Assuming you handle password verification manually for API.
+        'is_active' => 'boolean',
+    ];
+
+    // Define relationships here
+
+    public function profile()
+    {
+        // One-to-One relation where User has one profile. Profile table has user_id FK.
+        // Laravel expects FK named user_profile_id by default, but your schema has user_id.
+        // No need to specify 'user_id' explicitly if the FK in user_profiles table is named 'user_id'.
+        // It's standard 'user_id' -> belongsTo(User), User hasOne -> belongsTo(UserProfile).
+        return $this->hasOne(UserProfile::class); // Laravel infers FK name 'user_id' on UserProfiles
+    }
+
+    public function phoneNumbers()
+    {
+        // One-to-Many relation where User has many phone numbers. PhoneNumbers table has user_id FK.
+        return $this->hasMany(UserPhoneNumber::class); // Laravel infers FK name 'user_id' on UserPhoneNumbers
+    }
+
+    public function products()
+    {
+        // One-to-Many relation where User (as seller/vendor) has many products. Products table has seller_user_id FK.
+        return $this->hasMany(Product::class, 'seller_user_id'); // Specify FK name if not user_id
+    }
+
+    public function shoppingCartItems()
+    {
+        // One-to-Many relation where User has many cart items. ShoppingCartItems table has user_id FK.
+         return $this->hasMany(ShoppingCartItem::class);
+    }
+
+    public function productOrders()
+    {
+        // One-to-Many relation where User has many product orders. ProductOrders table has user_id FK.
+         return $this->hasMany(ProductOrder::class);
+    }
+
+    public function touristSitesAdded()
+    {
+        // One-to-Many relation where User added many sites. TouristSites table has added_by_user_id FK.
+         return $this->hasMany(TouristSite::class, 'added_by_user_id');
+    }
+
+    public function touristActivitiesOrganized()
+    {
+        // One-to-Many relation where User organized many activities. TouristActivities table has organizer_user_id FK.
+         return $this->hasMany(TouristActivity::class, 'organizer_user_id');
+    }
+
+     public function hotelsManaged()
+    {
+        // One-to-Many relation where User manages many hotels. Hotels table has managed_by_user_id FK.
+         return $this->hasMany(Hotel::class, 'managed_by_user_id');
+    }
+
+     public function hotelBookings()
+    {
+        // One-to-Many relation where User has many hotel bookings. HotelBookings table has user_id FK.
+         return $this->hasMany(HotelBooking::class);
+    }
+
+     public function siteExperiences()
+    {
+        // One-to-Many relation where User wrote many experiences. SiteExperiences table has user_id FK.
+         return $this->hasMany(SiteExperience::class);
+    }
+
+     public function articlesAuthored()
+    {
+        // One-to-Many relation where User authored many articles. Articles table has author_user_id FK.
+         return $this->hasMany(Article::class, 'author_user_id');
+    }
+
+    // Polymorphic relationships where User is the source of the action (Many-to-One polymorphic)
+    // e.g., User has many Favorites (where Favorite's user_id is this user's id)
+    public function favorites()
+    {
+        return $this->hasMany(Favorite::class); // Favorite model has user_id FK
+    }
+
+    public function ratings()
+    {
+        return $this->hasMany(Rating::class); // Rating model has user_id FK
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(Comment::class); // Comment model has user_id FK
+    }
+
+    // Accessors or methods for role checking
+    public function isAdmin()
+    {
+        return $this->user_type === 'Admin';
+    }
+
+     public function isVendor()
+    {
+        return $this->user_type === 'Vendor';
+    }
+
+    public function isTourist()
+    {
+        return $this->user_type === 'Tourist';
+    }
+
+     // ... methods for other user types
+}
+```
+
+**`app/Models/UserProfile.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class UserProfile extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default, no need to specify $primaryKey
+    // Auto-incrementing is true by default
+    // Key type is int (unsignedBigInteger) by default
+
+    // Assuming migration now includes $table->id() and $table->foreignId('user_id')...
+    // So, 'id' is the PK for UserProfile, and 'user_id' is a regular FK.
+
+    protected $fillable = [
+        'user_id', // Now user_id is fillable as it's an FK, not the PK
+        'first_name',
+        'last_name',
+        'father_name',
+        'mother_name',
+        'passport_image_url',
+        'bio',
+        'profile_picture_url',
+    ];
+
+    // Define relationship back to User (Many-to-One)
+    public function user()
+    {
+        // UserProfile belongs to a User. UserProfile table has user_id FK.
+        return $this->belongsTo(User::class); // Laravel infers FK name 'user_id'
+    }
+}
+```
+*ملاحظة:* إذا كانت علاقة UserProfile بـ User هي One-to-One *exactly* (كل مستخدم لديه ملف تعريف واحد فقط، وكل ملف تعريف ينتمي لمستخدم واحد فقط)، والطريقة التي تم بها بناء Migration هي `id()` كـ PK لـ `user_profiles` و `user_id` كـ FK (كما يفترض التغيير)، فإن تعريف العلاقات كـ `User->hasOne(UserProfile)` و `UserProfile->belongsTo(User)` هو الصحيح. التأكد من أن `user_id` في جدول `user_profiles` فريد (Unique index) يضمن أن العلاقة هي 1-to-1 من جانب `UserProfile` إلى `User`.
+
+**`app/Models/UserPhoneNumber.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class UserPhoneNumber extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'phone_number',
+        'is_primary',
+        'description',
+    ];
+
+    public function user()
+    {
+        // UserPhoneNumber belongs to a User. UserPhoneNumbers table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+}
+```
+
+**`app/Models/Product.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Product extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'seller_user_id',
+        'name',
+        'description',
+        'color',
+        'stock_quantity',
+        'price',
+        'main_image_url',
+        'category_id',
+        'is_available',
+    ];
+
+    protected $casts = [
+        'is_available' => 'boolean',
+        'price' => 'decimal:2',
+        'stock_quantity' => 'integer',
+    ];
+
+    public function seller()
+    {
+        // Product belongs to a User (seller). Products table has seller_user_id FK.
+        return $this->belongsTo(User::class, 'seller_user_id');
+    }
+
+    public function category()
+    {
+        // Product belongs to a ProductCategory. Products table has category_id FK.
+        return $this->belongsTo(ProductCategory::class, 'category_id');
+    }
+
+    // Polymorphic relationships where this Product is the target (One-to-Many polymorphic)
+    // e.g., Product has many Ratings (where Rating's target_type is 'product' and target_id is this product's id)
+    public function ratings()
+    {
+        // 'target' is the morph name defined in the Rating model's morphTo relation
+        return $this->morphMany(Rating::class, 'target');
+    }
+
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'target');
+    }
+
+    public function favorites()
+    {
+        return $this->morphMany(Favorite::class, 'target');
+    }
+
+    // Product can appear in many cart items and order items (One-to-Many)
+    public function shoppingCartItems()
+    {
+        return $this->hasMany(ShoppingCartItem::class);
+    }
+
+     public function orderItems()
+    {
+        return $this->hasMany(ProductOrderItem::class);
+    }
+}
+```
+
+**`app/Models/ProductCategory.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ProductCategory extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    public $timestamps = false; // No timestamps in schema
+
+    protected $fillable = [
+        'name',
+        'description',
+        'parent_category_id',
+    ];
+
+    // Hierarchical relationship (Self-referencing)
+    public function parent()
+    {
+        // ProductCategory belongs to a parent ProductCategory. ProductsCategory table has parent_category_id FK.
+        // Specify FK and Local Key if they don't match conventions ('parent_category_id' vs 'id')
+        return $this->belongsTo(ProductCategory::class, 'parent_category_id', 'id');
+    }
+
+    public function children()
+    {
+        // ProductCategory has many children ProductCategory. Children's parent_category_id points back here.
+        return $this->hasMany(ProductCategory::class, 'parent_category_id', 'id');
+    }
+
+    // Relationship to products in this category
+    public function products()
+    {
+        // ProductCategory has many Products. Products table has category_id FK.
+        return $this->hasMany(Product::class, 'category_id');
+    }
+}
+```
+
+**`app/Models/ShoppingCartItem.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ShoppingCartItem extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    // Assuming migration uses $table->id() for PK
+
+    protected $fillable = [
+        'user_id',
+        'product_id',
+        'quantity',
+        // 'added_at' is usually handled by timestamps or default in DB
+    ];
+
+    protected $casts = [
+        'added_at' => 'datetime',
+        'quantity' => 'integer',
+    ];
+
+    public function user()
+    {
+        // ShoppingCartItem belongs to a User. ShoppingCartItems table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    public function product()
+    {
+        // ShoppingCartItem belongs to a Product. ShoppingCartItems table has product_id FK.
+        return $this->belongsTo(Product::class);
+    }
+}
+```
+
+**`app/Models/ProductOrder.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ProductOrder extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'total_amount',
+        'order_status',
+        'shipping_address_line1',
+        'shipping_address_line2',
+        'shipping_city',
+        'shipping_postal_code',
+        'shipping_country',
+        'payment_transaction_id',
+        // 'order_date' is often handled by timestamps or default in DB
+    ];
+
+    protected $casts = [
+        'order_date' => 'datetime', // Or date if only date
+        'total_amount' => 'decimal:2',
+    ];
+
+    public function user()
+    {
+        // ProductOrder belongs to a User. ProductOrders table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    public function items()
+    {
+        // ProductOrder has many ProductOrderItems. ProductOrderItems table has order_id FK.
+        return $this->hasMany(ProductOrderItem::class);
+    }
+}
+```
+
+**`app/Models/ProductOrderItem.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class ProductOrderItem extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    public $timestamps = false; // No timestamps in schema
+
+    protected $fillable = [
+        'order_id',
+        'product_id',
+        'quantity',
+        'price_at_purchase',
+    ];
+
+     protected $casts = [
+        'price_at_purchase' => 'decimal:2',
+        'quantity' => 'integer',
+    ];
+
+
+    public function order()
+    {
+        // ProductOrderItem belongs to a ProductOrder. ProductOrderItems table has order_id FK.
+        return $this->belongsTo(ProductOrder::class);
+    }
+
+    public function product()
+    {
+        // ProductOrderItem belongs to a Product. ProductOrderItems table has product_id FK.
+        return $this->belongsTo(Product::class);
+    }
+}
+```
+
+**`app/Models/TouristSite.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class TouristSite extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'name',
+        'description',
+        'location_text',
+        'latitude',
+        'longitude',
+        'city',
+        'country',
+        'category_id',
+        'main_image_url',
+        'video_url',
+        'added_by_user_id',
+    ];
+
+    protected $casts = [
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8', // Or 11 depending on migration column definition
+    ];
+
+
+    public function category()
+    {
+        // TouristSite belongs to a SiteCategory. TouristSites table has category_id FK.
+        return $this->belongsTo(SiteCategory::class, 'category_id');
+    }
+
+    public function addedBy()
+    {
+        // TouristSite belongs to a User (the one who added it). TouristSites table has added_by_user_id FK.
+        return $this->belongsTo(User::class, 'added_by_user_id');
+    }
+
+    public function activities()
+    {
+        // TouristSite has many TouristActivities at this site. TouristActivities table has site_id FK.
+        return $this->hasMany(TouristActivity::class);
+    }
+
+    public function experiences()
+    {
+        // TouristSite has many SiteExperiences. SiteExperiences table has site_id FK.
+        return $this->hasMany(SiteExperience::class);
+    }
+
+    // Polymorphic relationships where this TouristSite is the target
+    public function ratings()
+    {
+        return $this->morphMany(Rating::class, 'target');
+    }
+
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'target');
+    }
+
+     public function favorites()
+    {
+        return $this->morphMany(Favorite::class, 'target');
+    }
+}
+```
+
+**`app/Models/SiteCategory.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class SiteCategory extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    public $timestamps = false; // No timestamps in schema
+
+    protected $fillable = [
+        'name',
+        'description',
+    ];
+
+    public function touristSites()
+    {
+        // SiteCategory has many TouristSites. TouristSites table has category_id FK.
+        return $this->hasMany(TouristSite::class, 'category_id');
+    }
+}
+```
+
+**`app/Models/TouristActivity.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class TouristActivity extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'name',
+        'description',
+        'site_id',
+        'location_text',
+        'start_datetime',
+        'duration_minutes',
+        'organizer_user_id',
+        'price',
+        'max_participants',
+    ];
+
+    protected $casts = [
+        'start_datetime' => 'datetime',
+        'duration_minutes' => 'integer',
+        'price' => 'decimal:2',
+        'max_participants' => 'integer',
+    ];
+
+    public function site()
+    {
+        // TouristActivity belongs to a TouristSite. TouristActivities table has site_id FK.
+        return $this->belongsTo(TouristSite::class, 'site_id');
+    }
+
+    public function organizer()
+    {
+        // TouristActivity belongs to a User (organizer). TouristActivities table has organizer_user_id FK.
+        return $this->belongsTo(User::class, 'organizer_user_id');
+    }
+}
+```
+
+**`app/Models/Hotel.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Hotel extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'name',
+        'star_rating',
+        'description',
+        'address_line1',
+        'city',
+        'country',
+        'latitude',
+        'longitude',
+        'contact_phone',
+        'contact_email',
+        'main_image_url',
+        'managed_by_user_id',
+    ];
+
+    protected $casts = [
+        'star_rating' => 'integer',
+        'latitude' => 'decimal:8',
+        'longitude' => 'decimal:8', // Or 11
+    ];
+
+    public function managedBy()
+    {
+        // Hotel belongs to a User (manager). Hotels table has managed_by_user_id FK.
+        return $this->belongsTo(User::class, 'managed_by_user_id');
+    }
+
+    public function rooms()
+    {
+        // Hotel has many HotelRooms. HotelRooms table has hotel_id FK.
+        return $this->hasMany(HotelRoom::class);
+    }
+
+    // Polymorphic relationships where this Hotel is the target
+    public function ratings()
+    {
+        return $this->morphMany(Rating::class, 'target');
+    }
+
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'target');
+    }
+
+     public function favorites()
+    {
+        return $this->morphMany(Favorite::class, 'target');
+    }
+}
+```
+
+**`app/Models/HotelRoomType.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class HotelRoomType extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    public $timestamps = false; // No timestamps in schema
+
+    protected $fillable = [
+        'name',
+        'description',
+    ];
+
+    public function rooms()
+    {
+        // HotelRoomType has many HotelRooms. HotelRooms table has room_type_id FK.
+        return $this->hasMany(HotelRoom::class, 'room_type_id');
+    }
+}
+```
+
+**`app/Models/HotelRoom.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class HotelRoom extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'hotel_id',
+        'room_type_id',
+        'room_number',
+        'price_per_night',
+        'area_sqm',
+        'max_occupancy',
+        'description',
+        'is_available_for_booking',
+    ];
+
+     protected $casts = [
+        'price_per_night' => 'decimal:2',
+        'area_sqm' => 'decimal:2',
+        'max_occupancy' => 'integer',
+        'is_available_for_booking' => 'boolean',
+    ];
+
+    public function hotel()
+    {
+        // HotelRoom belongs to a Hotel. HotelRooms table has hotel_id FK.
+        return $this->belongsTo(Hotel::class);
+    }
+
+    public function type()
+    {
+        // HotelRoom belongs to a HotelRoomType. HotelRooms table has room_type_id FK.
+        return $this->belongsTo(HotelRoomType::class, 'room_type_id');
+    }
+
+    public function bookings()
+    {
+        // HotelRoom has many HotelBookings. HotelBookings table has room_id FK.
+        return $this->hasMany(HotelBooking::class, 'room_id');
+    }
+}
+```
+
+**`app/Models/HotelBooking.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class HotelBooking extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'room_id',
+        'check_in_date',
+        'check_out_date',
+        'num_adults',
+        'num_children',
+        'total_amount',
+        'booking_status',
+        'payment_status',
+        'payment_transaction_id',
+        'special_requests',
+        // 'booked_at' is often handled by timestamps or default in DB
+    ];
+
+     protected $casts = [
+        'check_in_date' => 'date',
+        'check_out_date' => 'date',
+        'num_adults' => 'integer',
+        'num_children' => 'integer',
+        'total_amount' => 'decimal:2',
+        'booked_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        // HotelBooking belongs to a User. HotelBookings table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    public function room()
+    {
+        // HotelBooking belongs to a HotelRoom. HotelBookings table has room_id FK.
+        return $this->belongsTo(HotelRoom::class, 'room_id');
+    }
+}
+```
+
+**`app/Models/SiteExperience.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class SiteExperience extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'site_id',
+        'title',
+        'content',
+        'photo_url',
+        'visit_date',
+    ];
+
+     protected $casts = [
+        'visit_date' => 'date',
+    ];
+
+    public function user()
+    {
+        // SiteExperience belongs to a User. SiteExperiences table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    public function site()
+    {
+        // SiteExperience belongs to a TouristSite. SiteExperiences table has site_id FK.
+        return $this->belongsTo(TouristSite::class, 'site_id');
+    }
+
+    // Polymorphic relationships where this SiteExperience is the target
+    // Note: Specify morph name if model name doesn't match snake_case singular of column (site_experience)
+    // Eloquent should handle 'site_experience' automatically if target_type stores 'site_experience'
+    public function ratings()
+    {
+         return $this->morphMany(Rating::class, 'target');
+    }
+
+    public function comments()
+    {
+         return $this->morphMany(Comment::class, 'target');
+    }
+
+     public function favorites()
+    {
+         return $this->morphMany(Favorite::class, 'target');
+    }
+}
+```
+
+**`app/Models/Article.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Article extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'author_user_id',
+        'title',
+        'content',
+        'excerpt',
+        'main_image_url',
+        'video_url',
+        'tags',
+        'status',
+        'published_at',
+    ];
+
+    protected $casts = [
+        'published_at' => 'datetime', // Or date if only date
+    ];
+
+
+    public function author()
+    {
+        // Article belongs to a User (author). Articles table has author_user_id FK.
+        return $this->belongsTo(User::class, 'author_user_id');
+    }
+
+    // Polymorphic relationships where this Article is the target
+    public function ratings()
+    {
+        return $this->morphMany(Rating::class, 'target');
+    }
+
+    public function comments()
+    {
+        return $this->morphMany(Comment::class, 'target');
+    }
+
+     public function favorites()
+    {
+        return $this->morphMany(Favorite::class, 'target');
+    }
+}
+```
+
+**`app/Models/Favorite.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Favorite extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+    // If you used a composite PK in the migration, uncomment and adjust below:
+    // protected $primaryKey = ['user_id', 'target_type', 'target_id']; // Example for composite
+    // public $incrementing = false; // Composite PK is not auto-incrementing
+
+    protected $fillable = [
+        'user_id',
+        'target_type',
+        'target_id',
+        // 'added_at' is usually handled by default in DB
+    ];
+
+     protected $casts = [
+        'added_at' => 'datetime',
+    ];
+
+
+    public function user()
+    {
+        // Favorite belongs to a User. Favorites table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    // Polymorphic relationship to the favorited item (Site, Product, Article, Hotel)
+    // Laravel expects target_type and target_id columns by default
+    public function target()
+    {
+        return $this->morphTo(); // Searches for target_type and target_id columns
+    }
+}
+```
+
+**`app/Models/Rating.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Rating extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'target_type',
+        'target_id',
+        'rating_value',
+        'review_title',
+        'review_text',
+    ];
+
+    protected $casts = [
+        'rating_value' => 'integer',
+    ];
+
+    public function user()
+    {
+        // Rating belongs to a User. Ratings table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    // Polymorphic relationship to the rated item
+    public function target()
+    {
+        return $this->morphTo();
+    }
+}
+```
+
+**`app/Models/Comment.php`**
+
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Comment extends Model
+{
+    use HasFactory;
+
+    // Primary key is 'id' by default
+
+    protected $fillable = [
+        'user_id',
+        'target_type',
+        'target_id',
+        'parent_comment_id',
+        'content',
+    ];
+
+    public function user()
+    {
+        // Comment belongs to a User. Comments table has user_id FK.
+        return $this->belongsTo(User::class);
+    }
+
+    // Polymorphic relationship to the commented item
+    public function target()
+    {
+        return $this->morphTo();
+    }
+
+    // Relationship for nested comments (replies) - Self-referencing
+    public function parent()
+    {
+        // Comment belongs to a parent Comment. Comments table has parent_comment_id FK.
+        return $this->belongsTo(Comment::class, 'parent_comment_id');
+    }
+
+    public function replies()
+    {
+        // Comment has many child Comments (replies). Children's parent_comment_id points back here.
+        return $this->hasMany(Comment::class, 'parent_comment_id');
+    }
+}
+```
+
+**ملخص التغييرات في النماذج:**
+
+*   تمت إزالة `$primaryKey` (إذا كانت محددة بأسماء غير `id`)، `$incrementing`، و `$keyType` من جميع النماذج حيث أن `id` هو المفتاح الأساسي الافتراضي.
+*   تمت إضافة `$fillable` لكل نموذج مع تضمين جميع الأعمدة التي يمكن تعيين قيم لها بشكل جماعي (Mass Assignment)، بما في ذلك أعمدة المفاتيح الأجنبية.
+*   تم التأكد من صحة تعريف علاقات Eloquent (`belongsTo`, `hasMany`, `hasOne`) مع تحديد اسم العمود الأجنبي بشكل صريح فقط إذا كان يختلف عن التسمية الافتراضية لـ Laravel (مثلاً، `seller_user_id` بدلاً من `user_id`).
+*   تم التأكد من صحة تعريف العلاقات المتعددة الأشكال (`morphTo`, `morphMany`) باستخدام الاسم الافتراضي `'target'` لـ morph (والذي يبحث عن عمودي `target_type` و `target_id`).
+*   تم إضافة `$casts` لبعض الأعمدة لضمان التعامل مع البيانات بالنوع الصحيح (مثل التواريخ والأرقام العشرية والقيم المنطقية).
+*   تم تحديد `$timestamps = false;` للنماذج التي لا تحتوي على عمودي `created_at` و `updated_at` في مخطط القاعدة (ProductCategories, HotelRoomTypes, ProductOrderItems).
+
+الآن، هذه النماذج تتوافق مع بنية قاعدة البيانات التي تستخدم `id` كمفتاح أساسي في جميع الجداول و `foreignId()` لتعريف المفاتيح الأجنبية.
+
+
+---
+
+

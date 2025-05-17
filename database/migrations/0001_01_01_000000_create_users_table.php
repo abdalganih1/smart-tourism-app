@@ -12,13 +12,25 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
+            // Laravel uses 'id' as the primary key by default, which is standard practice.
+            // Let's keep it as 'id' (integer, auto-increment, primary key).
+            // If you MUST use 'user_id', it's more complex and requires overriding Eloquent conventions.
+            // Sticking to 'id' is recommended for standard Laravel functionality.
+            $table->id(); // This creates an auto-incrementing unsigned BigInteger column named 'id'
+
+            $table->string('username')->unique(); // Added username as unique string
+            // Default Laravel uses 'password'. Rename it to password_hash as per your schema.
+            $table->string('password_hash');
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
+            $table->string('user_type')->default('Tourist'); // Added user_type with a default
+            $table->boolean('is_active')->default(true); // Added is_active boolean
+
+            // Optional: Keep if needed for email verification feature
+            // $table->timestamp('email_verified_at')->nullable();
+            // Optional: Keep if needed for "remember me" functionality
+            // $table->rememberToken();
+
+            $table->timestamps(); // This adds 'created_at' and 'updated_at'
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
