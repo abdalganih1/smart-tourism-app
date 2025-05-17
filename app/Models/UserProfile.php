@@ -9,20 +9,15 @@ class UserProfile extends Model
 {
     use HasFactory;
 
-    // If your primary key is not 'id'
-    protected $primaryKey = 'user_id';
+    // Primary key is 'id' by default, no need to specify $primaryKey
+    // Auto-incrementing is true by default
+    // Key type is int (unsignedBigInteger) by default
 
-    // Disable auto-incrementing for PK as it's also FK
-    public $incrementing = false;
-
-    // Set primary key type if not integer (though user_id should be unsignedBigInteger)
-    protected $keyType = 'int'; // Or 'string' if user_id was UUID/ULID
-
-    // Disable timestamps if only 'updated_at' is used
-    // public $timestamps = false; // Only updated_at in schema V2.1, but migration V2.1 added timestamps(). Let's use timestamps().
+    // Assuming migration now includes $table->id() and $table->foreignId('user_id')...
+    // So, 'id' is the PK for UserProfile, and 'user_id' is a regular FK.
 
     protected $fillable = [
-        'user_id',
+        'user_id', // Now user_id is fillable as it's an FK, not the PK
         'first_name',
         'last_name',
         'father_name',
@@ -32,9 +27,10 @@ class UserProfile extends Model
         'profile_picture_url',
     ];
 
-    // Define relationship back to User
+    // Define relationship back to User (Many-to-One)
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        // UserProfile belongs to a User. UserProfile table has user_id FK.
+        return $this->belongsTo(User::class); // Laravel infers FK name 'user_id'
     }
 }

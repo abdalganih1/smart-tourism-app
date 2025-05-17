@@ -2,15 +2,17 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens; // Import Sanctum trait
+use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable; // Use HasApiTokens trait
+    use HasApiTokens, HasFactory, Notifiable;
+
+    // Primary key is 'id' by default, no need to specify $primaryKey
 
     /**
      * The attributes that are mass assignable.
@@ -20,7 +22,7 @@ class User extends Authenticatable
     protected $fillable = [
         'username',
         'email',
-        'password_hash', // Use password_hash here
+        'password_hash', // Using password_hash as per your schema
         'user_type',
         'is_active',
     ];
@@ -31,8 +33,8 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $hidden = [
-        'password_hash', // Hide password_hash
-        'remember_token', // Keep if remember_token exists
+        'password_hash',
+        'remember_token',
     ];
 
     /**
@@ -41,20 +43,13 @@ class User extends Authenticatable
      * @var array<string, string>
      */
     protected $casts = [
-        // 'email_verified_at' => 'datetime', // Keep if email verification is used
-        'password_hash' => 'hashed', // Laravel's default 'password' cast uses 'hashed'.
-                                    // If you renamed the column to 'password_hash',
-                                    // ensure your authentication logic handles it correctly,
-                                    // or rename the column back to 'password' in migration
-                                    // and just update $fillable/user_type/is_active.
-                                    // For API, often handle hashing manually during registration/password change.
-                                    // Let's stick to the schema's password_hash for now, but be aware of this.
-                                    // For simplicity with Auth::attempt, you might need to map password_hash
-                                    // or use a custom guard/provider. A simpler approach is to keep the column name 'password'.
-                                    // **Let's revert the column name back to 'password' in migration for easier Auth integration.**
-                                    // Update: Given the schema explicitly uses password_hash, let's generate it that way
-                                    // and add a note about potential Auth challenges or how to handle.
-                                    // For Sanctum APIs, you'll typically manually verify password using Hash::check.
+        // 'email_verified_at' => 'datetime', // Uncomment if using email verification
+        'password_hash' => 'hashed', // Note: Laravel's default Auth expects 'password' column.
+                                    // If keeping 'password_hash', you might need custom logic
+                                    // for login using Hash::check() or a custom Auth provider.
+                                    // For simplicity with built-in auth features (like password reset),
+                                    // renaming the column to 'password' in the migration is often easier.
+                                    // Assuming you handle password verification manually for API.
         'is_active' => 'boolean',
     ];
 
@@ -62,77 +57,88 @@ class User extends Authenticatable
 
     public function profile()
     {
-        return $this->hasOne(UserProfile::class, 'user_id');
+        // One-to-One relation where User has one profile. Profile table has user_id FK.
+        // Laravel expects FK named user_profile_id by default, but your schema has user_id.
+        // No need to specify 'user_id' explicitly if the FK in user_profiles table is named 'user_id'.
+        // It's standard 'user_id' -> belongsTo(User), User hasOne -> belongsTo(UserProfile).
+        return $this->hasOne(UserProfile::class); // Laravel infers FK name 'user_id' on UserProfiles
     }
 
     public function phoneNumbers()
     {
-        return $this->hasMany(UserPhoneNumber::class, 'user_id');
+        // One-to-Many relation where User has many phone numbers. PhoneNumbers table has user_id FK.
+        return $this->hasMany(UserPhoneNumber::class); // Laravel infers FK name 'user_id' on UserPhoneNumbers
     }
 
     public function products()
     {
-        return $this->hasMany(Product::class, 'seller_user_id');
+        // One-to-Many relation where User (as seller/vendor) has many products. Products table has seller_user_id FK.
+        return $this->hasMany(Product::class, 'seller_user_id'); // Specify FK name if not user_id
     }
 
     public function shoppingCartItems()
     {
-         return $this->hasMany(ShoppingCartItem::class, 'user_id');
+        // One-to-Many relation where User has many cart items. ShoppingCartItems table has user_id FK.
+         return $this->hasMany(ShoppingCartItem::class);
     }
 
     public function productOrders()
     {
-         return $this->hasMany(ProductOrder::class, 'user_id');
+        // One-to-Many relation where User has many product orders. ProductOrders table has user_id FK.
+         return $this->hasMany(ProductOrder::class);
     }
 
-    public function touristSites()
+    public function touristSitesAdded()
     {
-         // Assuming 'added_by_user_id' in TouristSites refers to a User
+        // One-to-Many relation where User added many sites. TouristSites table has added_by_user_id FK.
          return $this->hasMany(TouristSite::class, 'added_by_user_id');
     }
 
-    public function touristActivities()
+    public function touristActivitiesOrganized()
     {
-         // Assuming 'organizer_user_id' in TouristActivities refers to a User
+        // One-to-Many relation where User organized many activities. TouristActivities table has organizer_user_id FK.
          return $this->hasMany(TouristActivity::class, 'organizer_user_id');
     }
 
      public function hotelsManaged()
     {
-         // Assuming 'managed_by_user_id' in Hotels refers to a User
+        // One-to-Many relation where User manages many hotels. Hotels table has managed_by_user_id FK.
          return $this->hasMany(Hotel::class, 'managed_by_user_id');
     }
 
      public function hotelBookings()
     {
-         return $this->hasMany(HotelBooking::class, 'user_id');
+        // One-to-Many relation where User has many hotel bookings. HotelBookings table has user_id FK.
+         return $this->hasMany(HotelBooking::class);
     }
 
      public function siteExperiences()
     {
-         return $this->hasMany(SiteExperience::class, 'user_id');
+        // One-to-Many relation where User wrote many experiences. SiteExperiences table has user_id FK.
+         return $this->hasMany(SiteExperience::class);
     }
 
      public function articlesAuthored()
     {
-         // Assuming 'author_user_id' in Articles refers to a User
+        // One-to-Many relation where User authored many articles. Articles table has author_user_id FK.
          return $this->hasMany(Article::class, 'author_user_id');
     }
 
-    // Polymorphic relationships (User is the source of the action)
+    // Polymorphic relationships where User is the source of the action (Many-to-One polymorphic)
+    // e.g., User has many Favorites (where Favorite's user_id is this user's id)
     public function favorites()
     {
-        return $this->hasMany(Favorite::class, 'user_id');
+        return $this->hasMany(Favorite::class); // Favorite model has user_id FK
     }
 
     public function ratings()
     {
-        return $this->hasMany(Rating::class, 'user_id');
+        return $this->hasMany(Rating::class); // Rating model has user_id FK
     }
 
     public function comments()
     {
-        return $this->hasMany(Comment::class, 'user_id');
+        return $this->hasMany(Comment::class); // Comment model has user_id FK
     }
 
     // Accessors or methods for role checking
@@ -146,5 +152,10 @@ class User extends Authenticatable
         return $this->user_type === 'Vendor';
     }
 
-    // ... methods for other user types
+    public function isTourist()
+    {
+        return $this->user_type === 'Tourist';
+    }
+
+     // ... methods for other user types
 }

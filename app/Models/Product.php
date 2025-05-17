@@ -9,7 +9,7 @@ class Product extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'product_id';
+    // Primary key is 'id' by default
 
     protected $fillable = [
         'seller_user_id',
@@ -25,23 +25,27 @@ class Product extends Model
 
     protected $casts = [
         'is_available' => 'boolean',
-        'price' => 'decimal:2', // Cast price to decimal with 2 places
+        'price' => 'decimal:2',
         'stock_quantity' => 'integer',
     ];
 
     public function seller()
     {
+        // Product belongs to a User (seller). Products table has seller_user_id FK.
         return $this->belongsTo(User::class, 'seller_user_id');
     }
 
     public function category()
     {
+        // Product belongs to a ProductCategory. Products table has category_id FK.
         return $this->belongsTo(ProductCategory::class, 'category_id');
     }
 
-    // Polymorphic relationships (This product can have many ratings, comments, be favorited)
+    // Polymorphic relationships where this Product is the target (One-to-Many polymorphic)
+    // e.g., Product has many Ratings (where Rating's target_type is 'product' and target_id is this product's id)
     public function ratings()
     {
+        // 'target' is the morph name defined in the Rating model's morphTo relation
         return $this->morphMany(Rating::class, 'target');
     }
 
@@ -55,14 +59,14 @@ class Product extends Model
         return $this->morphMany(Favorite::class, 'target');
     }
 
-    // Product can appear in many cart items and order items
+    // Product can appear in many cart items and order items (One-to-Many)
     public function shoppingCartItems()
     {
-        return $this->hasMany(ShoppingCartItem::class, 'product_id');
+        return $this->hasMany(ShoppingCartItem::class);
     }
 
      public function orderItems()
     {
-        return $this->hasMany(ProductOrderItem::class, 'product_id');
+        return $this->hasMany(ProductOrderItem::class);
     }
 }

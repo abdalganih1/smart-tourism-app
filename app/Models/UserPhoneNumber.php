@@ -9,7 +9,7 @@ class UserPhoneNumber extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'phone_id'; // If your primary key is not 'id'
+    // Primary key is 'id' by default
 
     protected $fillable = [
         'user_id',
@@ -20,6 +20,7 @@ class UserPhoneNumber extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        // UserPhoneNumber belongs to a User. UserPhoneNumbers table has user_id FK.
+        return $this->belongsTo(User::class);
     }
 }

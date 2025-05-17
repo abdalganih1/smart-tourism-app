@@ -9,7 +9,7 @@ class ProductCategory extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'category_id';
+    // Primary key is 'id' by default
     public $timestamps = false; // No timestamps in schema
 
     protected $fillable = [
@@ -18,20 +18,24 @@ class ProductCategory extends Model
         'parent_category_id',
     ];
 
-    // Hierarchical relationship
+    // Hierarchical relationship (Self-referencing)
     public function parent()
     {
-        return $this->belongsTo(ProductCategory::class, 'parent_category_id');
+        // ProductCategory belongs to a parent ProductCategory. ProductsCategory table has parent_category_id FK.
+        // Specify FK and Local Key if they don't match conventions ('parent_category_id' vs 'id')
+        return $this->belongsTo(ProductCategory::class, 'parent_category_id', 'id');
     }
 
     public function children()
     {
-        return $this->hasMany(ProductCategory::class, 'parent_category_id');
+        // ProductCategory has many children ProductCategory. Children's parent_category_id points back here.
+        return $this->hasMany(ProductCategory::class, 'parent_category_id', 'id');
     }
 
     // Relationship to products in this category
     public function products()
     {
+        // ProductCategory has many Products. Products table has category_id FK.
         return $this->hasMany(Product::class, 'category_id');
     }
 }

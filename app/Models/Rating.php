@@ -9,7 +9,7 @@ class Rating extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'rating_id';
+    // Primary key is 'id' by default
 
     protected $fillable = [
         'user_id',
@@ -26,9 +26,11 @@ class Rating extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        // Rating belongs to a User. Ratings table has user_id FK.
+        return $this->belongsTo(User::class);
     }
 
+    // Polymorphic relationship to the rated item
     public function target()
     {
         return $this->morphTo();

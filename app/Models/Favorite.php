@@ -9,30 +9,33 @@ class Favorite extends Model
 {
     use HasFactory;
 
-    // Note: If using composite PK in migration, Eloquent won't automatically handle incrementing PK
-    // If using auto-increment PK 'favorite_id', define it: protected $primaryKey = 'favorite_id';
+    // Primary key is 'id' by default
+    // If you used a composite PK in the migration, uncomment and adjust below:
+    // protected $primaryKey = ['user_id', 'target_type', 'target_id']; // Example for composite
+    // public $incrementing = false; // Composite PK is not auto-incrementing
 
     protected $fillable = [
         'user_id',
         'target_type',
         'target_id',
-        'added_at', // Fillable if not automatically set by DB
+        // 'added_at' is usually handled by default in DB
     ];
 
-    protected $casts = [
+     protected $casts = [
         'added_at' => 'datetime',
     ];
 
 
-    // Relationship to the user who favorited
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        // Favorite belongs to a User. Favorites table has user_id FK.
+        return $this->belongsTo(User::class);
     }
 
     // Polymorphic relationship to the favorited item (Site, Product, Article, Hotel)
+    // Laravel expects target_type and target_id columns by default
     public function target()
     {
-        return $this->morphTo();
+        return $this->morphTo(); // Searches for target_type and target_id columns
     }
 }

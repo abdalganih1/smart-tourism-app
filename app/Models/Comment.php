@@ -9,7 +9,7 @@ class Comment extends Model
 {
     use HasFactory;
 
-    protected $primaryKey = 'comment_id';
+    // Primary key is 'id' by default
 
     protected $fillable = [
         'user_id',
@@ -21,22 +21,26 @@ class Comment extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        // Comment belongs to a User. Comments table has user_id FK.
+        return $this->belongsTo(User::class);
     }
 
+    // Polymorphic relationship to the commented item
     public function target()
     {
         return $this->morphTo();
     }
 
-    // Relationship for nested comments (replies)
+    // Relationship for nested comments (replies) - Self-referencing
     public function parent()
     {
+        // Comment belongs to a parent Comment. Comments table has parent_comment_id FK.
         return $this->belongsTo(Comment::class, 'parent_comment_id');
     }
 
     public function replies()
     {
+        // Comment has many child Comments (replies). Children's parent_comment_id points back here.
         return $this->hasMany(Comment::class, 'parent_comment_id');
     }
 }
